@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Resume Ranking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <h1>Resume Ranking</h1>
+    <p>Ranked from highest to lowest ATS match</p>
+
+    <div class="table-wrapper">
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Resume Name</th>
+                    <th>ATS Score</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for resume in results %}
+                <tr class="{% if loop.index == 1 %}top-rank{% endif %}">
+                    <td>
+                        {% if loop.index == 1 %}
+                            🥇 {{ loop.index }}
+                        {% elif loop.index == 2 %}
+                            🥈 {{ loop.index }}
+                        {% elif loop.index == 3 %}
+                            🥉 {{ loop.index }}
+                        {% else %}
+                            {{ loop.index }}
+                        {% endif %}
+                    </td>
+
+                    <td>{{ resume.resume_name }}</td>
+
+                    <td>
+                        <span class="
+                            score-badge
+                            {% if resume.score >= 70 %}
+                                high
+                            {% elif resume.score >= 40 %}
+                                medium
+                            {% else %}
+                                low
+                            {% endif %}
+                        ">
+                            {{ resume.score }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="/bulk" class="bulk-btn">← Back to Bulk Upload</a>
+
+</div>
+
+</body>
+</html>

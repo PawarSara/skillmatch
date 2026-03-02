@@ -13,13 +13,15 @@
     <p>Upload your resume and job description to check ATS compatibility</p>
 
     <form method="POST" enctype="multipart/form-data">
-        <label>Resume (PDF)</label>
-        <input type="file" name="resume_pdf" accept=".pdf" required>
-
         <label>Job Description (PDF)</label>
         <input type="file" name="jd_pdf" accept=".pdf" required>
 
+        <label>Resume (PDF)</label>
+        <input type="file" name="resume_pdf" accept=".pdf" required>
+
         <input type="submit" value="Check ATS Score">
+
+        <a href="/bulk" class="bulk-btn full-btn">Bulk Resume Ranking</a>
     </form>
 
     {% if msg %}

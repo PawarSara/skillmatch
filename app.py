@@ -8,7 +8,10 @@ app = Flask(__name__)
 # Load SBERT model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# PDF text extraction
+
+# ---------------------------
+# PDF TEXT EXTRACTION
+# ---------------------------
 def extract_text_pdf(pdf):
     reader = PdfReader(pdf)
     text = ""
@@ -18,7 +21,10 @@ def extract_text_pdf(pdf):
             text += extracted + " "
     return text.lower()
 
-# Extract requirements from JD
+
+# ---------------------------
+# EXTRACT JD REQUIREMENTS
+# ---------------------------
 def extract_requirements(text):
     sentences = re.split(r"[.\n]", text)
 
@@ -46,7 +52,10 @@ def extract_requirements(text):
 
     return list(set(strong)) if strong else list(set(weak[:12]))
 
-# Extract keywords
+
+# ---------------------------
+# EXTRACT MISSING KEYWORDS
+# ---------------------------
 def extract_keywords(phrases, resume_text):
     resume_words = set(resume_text.split())
 
@@ -78,8 +87,48 @@ def extract_keywords(phrases, resume_text):
 
     return sorted(keywords)
 
+
+# ---------------------------
+# CORE ATS SCORING FUNCTION
+# (Reusable for single & bulk)
+# ---------------------------
+def calculate_ats_score(resume_text, jd_text):
+
+    jd_reqs = extract_requirements(jd_text)
+    if not jd_reqs:
+        return 0, [], []
+
+    jd_emb = model.encode(jd_reqs, convert_to_tensor=True)
+
+    resume_sentences = [
+        s.strip() for s in re.split(r"[.\n]", resume_text)
+        if len(s.split()) > 5
+    ] or [resume_text]
+
+    resume_emb = model.encode(resume_sentences, convert_to_tensor=True)
+
+    matched = 0
+    missing = []
+
+    for i, req in enumerate(jd_reqs):
+        sim = util.cos_sim(jd_emb[i], resume_emb)
+        if sim.max() >= 0.5:
+            matched += 1
+        else:
+            missing.append(req)
+
+    ats_score = round((matched / len(jd_reqs)) * 100, 2)
+    keywords = extract_keywords(missing, resume_text)
+
+    return ats_score, missing, keywords
+
+
+# ---------------------------
+# SINGLE RESUME MODE
+# ---------------------------
 @app.route("/", methods=["GET", "POST"])
 def home():
+
     if request.method == "POST":
         resume_pdf = request.files["resume_pdf"]
         jd_pdf = request.files["jd_pdf"]
@@ -87,30 +136,7 @@ def home():
         resume_text = extract_text_pdf(resume_pdf)
         jd_text = extract_text_pdf(jd_pdf)
 
-        jd_reqs = extract_requirements(jd_text)
-        if not jd_reqs:
-            return render_template("home.html", msg="Not enough data.", missing=[])
-
-        jd_emb = model.encode(jd_reqs, convert_to_tensor=True)
-
-        resume_sentences = [
-            s.strip() for s in re.split(r"[.\n]", resume_text)
-            if len(s.split()) > 5
-        ] or [resume_text]
-
-        resume_emb = model.encode(resume_sentences, convert_to_tensor=True)
-
-        matched = 0
-        missing = []
-
-        for i, req in enumerate(jd_reqs):
-            sim = util.cos_sim(jd_emb[i], resume_emb)
-            if sim.max() >= 0.5:
-                matched += 1
-            else:
-                missing.append(req)
-
-        ats_score = round((matched / len(jd_reqs)) * 100, 2)
+        ats_score, missing, keywords = calculate_ats_score(resume_text, jd_text)
 
         if ats_score >= 70:
             recommendation = "Great match! Your resume is well aligned."
@@ -118,8 +144,6 @@ def home():
             recommendation = "It's good but there is still room for improvement."
         else:
             recommendation = "Low match. Improve job-specific skills."
-
-        keywords = extract_keywords(missing, resume_text)
 
         return render_template(
             "home.html",
@@ -129,6 +153,46 @@ def home():
         )
 
     return render_template("home.html")
+
+
+# ---------------------------
+# BULK UPLOAD PAGE
+# ---------------------------
+@app.route("/bulk")
+def bulk():
+    return render_template("bulk_ranking.html")
+
+
+# ---------------------------
+# BULK RANKING LOGIC
+# ---------------------------
+@app.route("/rank_resumes", methods=["POST"])
+def rank_resumes():
+
+    jd_pdf = request.files["job_description"]
+    resume_files = request.files.getlist("resumes")
+
+    # ✅ ADD LIMIT CHECK HERE
+    if len(resume_files) > 15:
+        return render_template("bulk_ranking.html", error="Maximum 15 resumes allowed.")
+
+    jd_text = extract_text_pdf(jd_pdf)
+
+    results = []
+
+    for resume in resume_files:
+        resume_text = extract_text_pdf(resume)
+
+        score, _, _ = calculate_ats_score(resume_text, jd_text)
+
+        results.append({
+            "resume_name": resume.filename,
+            "score": score
+        })
+
+    ranked_results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+    return render_template("ranking_result.html", results=ranked_results)
 
 if __name__ == "__main__":
     app.run(debug=True)
